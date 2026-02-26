@@ -1,6 +1,8 @@
 streamlit
 pandas
+gurobipy
+matplotlib
+openpyxl
 plotly
 pydeck
 scikit-learn
-openpyxl
