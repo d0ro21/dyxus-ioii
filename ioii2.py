@@ -69,34 +69,41 @@ if uploaded_file is not None:
     # --- 4. OTIMIZAÇÃO GUROBI ---
     if st.button("🚀 Otimizar Frota (Correr Gurobi)", type="primary"):
         with st.spinner("A calcular a rede ótima e marketing com linearização (Z)..."):
-            I = df_demand['index'].tolist()
-            J = df_truck['index'].tolist()
-            a = {(row['demand_node_index'], row['truck_node_index']): row['scaled_demand'] for _, row in df_dt.iterrows()}
+            
+            # ATUALIZAÇÃO DOS ÍNDICES CONFORME O RELATÓRIO
+            I = df_truck['index'].tolist()  # i: Localizações (Camiões)
+            J = df_demand['index'].tolist() # j: Edifícios (Procura)
+            
+            # a_ij onde i é o camião e j é o edifício
+            a = {(row['truck_node_index'], row['demand_node_index']): row['scaled_demand'] for _, row in df_dt.iterrows()}
 
             env = gp.Env(empty=True)
             env.setParam("OutputFlag", 0)
             env.start()
             model = gp.Model("Burrito_Game_Marketing_Linear", env=env)
 
-            Y = model.addVars(J, TIPOS, vtype=GRB.BINARY, name="Y")
-            X = model.addVars(I, J, vtype=GRB.BINARY, name="X")
+            # Variáveis de Decisão
+            Y = model.addVars(I, TIPOS, vtype=GRB.BINARY, name="Y") # y_it
+            X = model.addVars(I, J, vtype=GRB.BINARY, name="X")     # x_ij
 
-            # Variáveis do Marketing e Variável Contínua Z (Procura Efetiva)
-            M = model.addVars(I, vtype=GRB.INTEGER, lb=0, ub=max_campanhas, name="Marketing")
-            Z = model.addVars(I, J, vtype=GRB.CONTINUOUS, name="Z_Procura")
+            # Variáveis de Marketing e Variável Contínua Z (Procura Efetiva)
+            P = model.addVars(J, vtype=GRB.INTEGER, lb=0, ub=max_campanhas, name="Marketing") # P_j
+            Z = model.addVars(I, J, vtype=GRB.CONTINUOUS, name="Z_Procura")                   # Z_ij
 
             # Função Objetivo (Linear: Z multiplicado pelo Lucro Unitário)
             lucro_var = gp.quicksum((r - k_ing) * Z[i, j] for i in I for j in J if (i, j) in a)
-            custo_fixo_total = gp.quicksum(CUSTO_FIXO[t] * Y[j, t] for j in J for t in TIPOS)
-            custo_mkt_total = gp.quicksum(custo_campanha * M[i] for i in I)
+            custo_fixo_total = gp.quicksum(CUSTO_FIXO[t] * Y[i, t] for i in I for t in TIPOS)
+            custo_mkt_total = gp.quicksum(custo_campanha * P[j] for j in J)
             
             model.setObjective(lucro_var - custo_fixo_total - custo_mkt_total, GRB.MAXIMIZE)
 
-            # Restrições de Alocação
-            for i in I:
-                model.addConstr(gp.quicksum(X[i, j] for j in J if (i, j) in a) <= 1)
+            # Restrições de Afetação Única
             for j in J:
-                model.addConstr(gp.quicksum(Y[j, t] for t in TIPOS) <= 1)
+                model.addConstr(gp.quicksum(X[i, j] for i in I if (i, j) in a) <= 1)
+                
+            # Exclusividade de Frota por localização
+            for i in I:
+                model.addConstr(gp.quicksum(Y[i, t] for t in TIPOS) <= 1)
 
             # RESTRIÇÕES DE LINEARIZAÇÃO (O Truque Z)
             for i in I:
@@ -105,45 +112,45 @@ if uploaded_file is not None:
                         d_base = a[i, j]
                         d_maxima = d_base * (1 + aumento_pct * max_campanhas)
                         
-                        # 1. Se X=0, Z é forçado a 0
+                        # 1. Se X_ij=0, Z_ij é forçado a 0
                         model.addConstr(Z[i, j] <= d_maxima * X[i, j])
-                        # 2. Z não pode exceder a procura ditada pelo marketing
-                        model.addConstr(Z[i, j] <= d_base + (aumento_pct * d_base) * M[i])
-                        # 3. Se X=1, Z tem de ser igual à procura do marketing
-                        model.addConstr(Z[i, j] >= d_base + (aumento_pct * d_base) * M[i] - d_maxima * (1 - X[i, j]))
+                        # 2. Z_ij não pode exceder a procura ditada pelo marketing P_j
+                        model.addConstr(Z[i, j] <= d_base + (aumento_pct * d_base) * P[j])
+                        # 3. Se X_ij=1, Z_ij tem de ser igual à procura do marketing P_j
+                        model.addConstr(Z[i, j] >= d_base + (aumento_pct * d_base) * P[j] - d_maxima * (1 - X[i, j]))
 
             # Orçamento de Marketing
-            model.addConstr(gp.quicksum(custo_campanha * M[i] for i in I) <= orcamento_mkt)
+            model.addConstr(gp.quicksum(custo_campanha * P[j] for j in J) <= orcamento_mkt)
 
-            # Restrição de Capacidade (usando a procura efetiva Z)
-            for j in J:
-                model.addConstr(gp.quicksum(Z[i, j] for i in I if (i, j) in a) <= gp.quicksum(CAPACIDADE[t] * Y[j, t] for t in TIPOS))
+            # Restrição de Capacidade Operacional (usando a procura efetiva Z_ij)
+            for i in I:
+                model.addConstr(gp.quicksum(Z[i, j] for j in J if (i, j) in a) <= gp.quicksum(CAPACIDADE[t] * Y[i, t] for t in TIPOS))
 
             # Restrições Opcionais
             if use_min_trucks:
-                model.addConstr(gp.quicksum(Y[j, t] for j in J for t in TIPOS) >= min_trucks)
+                model.addConstr(gp.quicksum(Y[i, t] for i in I for t in TIPOS) >= min_trucks)
             if use_min_dist:
-                for j1 in J:
-                    for j2 in J:
-                        if j1 < j2:
-                            row1 = df_truck[df_truck['index'] == j1].iloc[0]
-                            row2 = df_truck[df_truck['index'] == j2].iloc[0]
+                for i1 in I:
+                    for i2 in I:
+                        if i1 < i2:
+                            row1 = df_truck[df_truck['index'] == i1].iloc[0]
+                            row2 = df_truck[df_truck['index'] == i2].iloc[0]
                             dist = math.sqrt((row1['x'] - row2['x'])**2 + (row1['y'] - row2['y'])**2)
                             if dist < min_dist:
-                                model.addConstr(gp.quicksum(Y[j1, t] for t in TIPOS) + gp.quicksum(Y[j2, t] for t in TIPOS) <= 1)
+                                model.addConstr(gp.quicksum(Y[i1, t] for t in TIPOS) + gp.quicksum(Y[i2, t] for t in TIPOS) <= 1)
 
             model.optimize()
 
             if model.Status == GRB.OPTIMAL:
-                st.success("✅ Solução Ótima Encontrada (Linearização Perfeita)!")
-                opened_trucks = [(j, t) for j in J for t in TIPOS if Y[j, t].X > 0.5]
+                st.success("✅ Solução Ótima Encontrada (Matemática Alinhada com o Relatório)!")
+                opened_trucks = [(i, t) for i in I for t in TIPOS if Y[i, t].X > 0.5]
 
                 # Cálculos Financeiros
                 total_burritos = sum(Z[i, j].X for i in I for j in J if (i, j) in a and X[i, j].X > 0.5)
                 faturacao = total_burritos * r
                 custo_ingredientes = total_burritos * k_ing
-                custo_frota = sum(CUSTO_FIXO[t] for j, t in opened_trucks)
-                custo_mkt_gasto = sum(M[i].X * custo_campanha for i in I)
+                custo_frota = sum(CUSTO_FIXO[t] for i, t in opened_trucks)
+                custo_mkt_gasto = sum(P[j].X * custo_campanha for j in J)
                 lucro_liquido = faturacao - custo_ingredientes - custo_frota - custo_mkt_gasto
 
                 # Dash
@@ -161,19 +168,20 @@ if uploaded_file is not None:
                 fig, ax = plt.subplots(figsize=(10, 6))
                 ax.scatter(df_demand['x'], df_demand['y'], c='gray', s=30, label='Edifícios', alpha=0.5, zorder=2)
 
-                for j, tipo in opened_trucks:
-                    t_row = df_truck[df_truck['index'] == j].iloc[0]
+                for i, tipo in opened_trucks:
+                    t_row = df_truck[df_truck['index'] == i].iloc[0]
                     ax.scatter(t_row['x'], t_row['y'], c=CORES_TAMANHO[tipo], marker='s', s=SIZES_GRAFICO[tipo], edgecolor='black', zorder=3, label=f'Camião {tipo}' if f'Camião {tipo}' not in ax.get_legend_handles_labels()[1] else "")
-                    ax.text(t_row['x'], t_row['y'] + 10, f"{j}\n({tipo})", color='black', fontweight='bold', ha='center', fontsize=8)
+                    ax.text(t_row['x'], t_row['y'] + 10, f"{i}\n({tipo})", color='black', fontweight='bold', ha='center', fontsize=8)
 
-                for i in I:
-                    if M[i].X > 0.5:
-                        d_row = df_demand[df_demand['index'] == i].iloc[0]
+                for j in J:
+                    if P[j].X > 0.5:
+                        d_row = df_demand[df_demand['index'] == j].iloc[0]
                         ax.scatter(d_row['x'], d_row['y'], c='gold', marker='*', s=200, edgecolor='black', zorder=4, label='Marketing Ativo' if 'Marketing Ativo' not in ax.get_legend_handles_labels()[1] else "")
-                    for j in J:
+                    
+                    for i in I:
                         if (i, j) in a and X[i, j].X > 0.5:
-                            d_row = df_demand[df_demand['index'] == i].iloc[0]
-                            t_row = df_truck[df_truck['index'] == j].iloc[0]
+                            d_row = df_demand[df_demand['index'] == j].iloc[0]
+                            t_row = df_truck[df_truck['index'] == i].iloc[0]
                             ax.plot([d_row['x'], t_row['x']], [d_row['y'], t_row['y']], 'k-', alpha=0.2, zorder=1)
 
                 handles, labels = plt.gca().get_legend_handles_labels()
@@ -186,11 +194,11 @@ if uploaded_file is not None:
                 # Tabelas
                 st.subheader("📢 Estratégia de Marketing")
                 mkt_data = []
-                for i in I:
-                    if M[i].X > 0.5:
-                        camps = int(M[i].X)
-                        base_demand = next(a[i, j] for j in J if (i, j) in a)
-                        mkt_data.append({"Edifício": i, "Campanhas": camps, "Procura Base": int(base_demand), "Nova Procura": int(base_demand + (camps * aumento_pct * base_demand)), "Custo (€)": camps * custo_campanha})
+                for j in J:
+                    if P[j].X > 0.5:
+                        camps = int(P[j].X)
+                        base_demand = next(a[i, j] for i in I if (i, j) in a)
+                        mkt_data.append({"Edifício": j, "Campanhas": camps, "Procura Base": int(base_demand), "Nova Procura": int(base_demand + (camps * aumento_pct * base_demand)), "Custo (€)": camps * custo_campanha})
                 if len(mkt_data) > 0:
                     st.dataframe(pd.DataFrame(mkt_data), use_container_width=True, hide_index=True)
                 else:
@@ -199,10 +207,10 @@ if uploaded_file is not None:
                 col_tab1, col_tab2 = st.columns(2)
                 with col_tab1:
                     st.subheader("🚚 Frota Instalada")
-                    st.dataframe(pd.DataFrame([{"Camião": j, "Tipo": t, "Cap.": CAPACIDADE[t], "Vendas": int(sum(Z[i, j].X for i in I if (i, j) in a and X[i, j].X > 0.5)), "Custo (€)": CUSTO_FIXO[t]} for j, t in opened_trucks]), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame([{"Camião": i, "Tipo": t, "Cap.": CAPACIDADE[t], "Vendas": int(sum(Z[i, j].X for j in J if (i, j) in a and X[i, j].X > 0.5)), "Custo (€)": CUSTO_FIXO[t]} for i, t in opened_trucks]), use_container_width=True, hide_index=True)
                 with col_tab2:
                     st.subheader("🏢 Alocação de Edifícios")
-                    st.dataframe(pd.DataFrame([{"Edifício": i, "Camião": j, "Tipo": next(t for t in TIPOS if Y[j, t].X > 0.5), "Burritos": int(Z[i, j].X)} for i in I for j in J if (i, j) in a and X[i, j].X > 0.5]), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame([{"Edifício": j, "Camião": i, "Tipo": next(t for t in TIPOS if Y[i, t].X > 0.5), "Burritos": int(Z[i, j].X)} for j in J for i in I if (i, j) in a and X[i, j].X > 0.5]), use_container_width=True, hide_index=True)
 
             elif model.Status == GRB.INFEASIBLE:
                 st.error("❌ O Modelo é Inviável!")
