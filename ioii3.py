@@ -511,4 +511,4 @@ else:
             elif model.Status == GRB.INFEASIBLE:
                 st.error("❌ O Modelo é INVIÁVEL. As restrições de Cobertura Geográfica e Monopólio Zonal em conjunto com o orçamento ou distância mínima podem estar a estrangular a rede.")
 else:
-    st.info("👆 Por favor, carregue o ficheiro Excel com os dados do 'Burrito Game' para desbloquear o simulador.")
+    st.info
