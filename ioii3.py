@@ -270,7 +270,8 @@ if uploaded_file is not None:
             elif model.Status == GRB.INFEASIBLE:
                 st.error("❌ O Modelo é INVIÁVEL. As restrições de espaço ou orçamento estão demasiado apertadas.")
 else:
-    st.info("👆 Por favor, carregue o ficheiro Excel com os dados do 'Burrito Game'.")    max_campanhas = st.sidebar.slider("Máx. Campanhas por Edifício", min_value=0, max_value=5, value=3)
+    st.info("👆 Por favor, carregue o ficheiro Excel com os dados do 'Burrito Game'.")    
+    max_campanhas = st.sidebar.slider("Máx. Campanhas por Edifício", min_value=0, max_value=5, value=3)
     custo_campanha = st.sidebar.number_input("Custo de 1 Campanha (€)", min_value=0.0, value=20.0, step=10.0)
     orcamento_mkt = st.sidebar.number_input("Orçamento Total Marketing (€)", min_value=0.0, value=500.0, step=50.0)
 
@@ -511,4 +512,4 @@ else:
             elif model.Status == GRB.INFEASIBLE:
                 st.error("❌ O Modelo é INVIÁVEL. As restrições de Cobertura Geográfica e Monopólio Zonal em conjunto com o orçamento ou distância mínima podem estar a estrangular a rede.")
 else:
-    st.info
+    st.info("👆 Por favor, carregue o ficheiro Excel com os dados do 'Burrito Game'.")
