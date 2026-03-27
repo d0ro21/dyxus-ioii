@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 import math
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Dashboard IOII - Burrito Game (MINLP)", layout="wide")
-st.title("🌮 Burrito Game 3.0 - Otimização de Frota (MINLP)")
-st.markdown("Simulador de Programação Não-Linear com Gurobi WLS e restrições de ordenamento.")
+st.set_page_config(page_title="Dashboard IOII - Burrito Game 3.0", layout="wide")
+st.title("🌮 Burrito Game 3.0 - Otimização de Frota (IOII)")
+st.markdown("Simulador de Programação Linear Inteira Mista (MILP) com restrições avançadas.")
 
 # --- 2. UPLOAD DO FICHEIRO EXCEL ---
 uploaded_file = st.file_uploader("Arraste e solte o ficheiro Excel (.xlsx) aqui", type=["xlsx"])
@@ -27,13 +27,13 @@ if uploaded_file is not None:
     default_r = float(df_prob['burrito_price'].iloc[0])
     default_k = float(df_prob['ingredient_cost'].iloc[0])
     
+    # Extrair índices
     I = df_truck['index'].tolist()
     J = df_demand['index'].tolist()
 
     # --- 3. BARRA LATERAL ---
     st.sidebar.header("🎯 Estratégia de Marketing")
     aumento_pct = st.sidebar.slider("Aumento Procura / Campanha (%)", min_value=1, max_value=50, value=10) / 100.0
-    max_campanhas = st.sidebar.slider("Máx. Campanhas por Edifício", min_value=0, max_value=5, value=3)
     custo_campanha = st.sidebar.number_input("Custo de 1 Campanha (€)", min_value=0.0, value=20.0, step=10.0)
     orcamento_mkt = st.sidebar.number_input("Orçamento Total Marketing (€)", min_value=0.0, value=500.0, step=50.0)
 
