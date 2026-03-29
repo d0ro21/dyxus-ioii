@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import gurobipy as gp
 from gurobipy import GRB
-import matplotlib.subplots as plt
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import math
