@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import gurobipy as gp
 from gurobipy import GRB
+import matplotlib.subplots as plt
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import math
@@ -212,6 +213,7 @@ if uploaded_file is not None:
                 fig, ax = plt.subplots(figsize=(10, 6))
                 
                 # --- INÍCIO DA INJEÇÃO DA IMAGEM DE FUNDO ---
+                # NOME DO FICHEIRO ATUALIZADO PARA "mapa.png"
                 img_path = 'mapa.png'
                 if os.path.exists(img_path):
                     try:
@@ -258,7 +260,6 @@ if uploaded_file is not None:
                 handles, labels = plt.gca().get_legend_handles_labels()
                 by_label = dict(zip(labels, handles))
                 ax.legend(by_label.values(), by_label.keys(), loc='upper right')
-                # Removida a grid base (as linhas tracejadas do matplotlib) para não estragar a imagem de fundo
                 ax.grid(False) 
                 st.pyplot(fig)
                 st.markdown("---")
