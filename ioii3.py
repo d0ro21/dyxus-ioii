@@ -125,9 +125,8 @@ if uploaded_file is not None:
             for i in I:
                 model.addConstr(gp.quicksum(Y[i, t] for t in TIPOS) <= 1)
 
-            # RESTRIÇÃO NÃO-LINEAR NATIVA (Substitui o Big-M)
+            # RESTRIÇÃO NÃO-LINEAR NATIVA
             # Z_ij = Procura * X_ij * (1 + aumento_pct * P_j)
-            # Esta linha multiplica duas variáveis diretamente (X e P)
             for i in I:
                 for j in J:
                     if (i, j) in a:
@@ -250,7 +249,7 @@ if uploaded_file is not None:
                         if row['x'] <= x_medio and row['y'] < y_medio: return "Q3 (SO)"
                         return "Q4 (SE)"
 
-                    frota_df = pd.DataFrame([{"Camião": i, "Quadrante": get_quadrante(i), "Tipo": t, "Cap.": CAPACIDADE[t], "Vendas": int(sum(Z[i, j].X for j in J if (i, j) in a and X[i, j].X > 0.5)), "Custo (€)": CUSTO_FIXO[t]} for i, t in opened_trucks])
+                    frota_df = pd.DataFrame([{"Camião": i, "Quadrante": get_quadrante(i), "Tipo": t, "Cap.": CAPACIDADE[t], "Vendas Totais": int(sum(Z[i, j].X for j in J if (i, j) in a and X[i, j].X > 0.5)), "Custo (€)": CUSTO_FIXO[t]} for i, t in opened_trucks])
                     st.dataframe(frota_df, use_container_width=True, hide_index=True)
                     
                 with col_tab2:
@@ -266,6 +265,26 @@ if uploaded_file is not None:
                         st.dataframe(pd.DataFrame(mkt_data), use_container_width=True, hide_index=True)
                     else:
                         st.info("Nenhuma campanha de marketing ativada.")
+
+                # --- NOVA SECÇÃO DE DETALHE DE VENDAS ---
+                st.markdown("---")
+                st.subheader("📦 Detalhe de Vendas (Alocação Camião -> Edifício)")
+                vendas_data = []
+                for i in I:
+                    for j in J:
+                        if (i, j) in a and X[i, j].X > 0.5:
+                            vendas_data.append({
+                                "Camião": i,
+                                "Edifício": j,
+                                "Burritos Entregues": int(round(Z[i, j].X, 0))
+                            })
+                
+                if vendas_data:
+                    # Ordenar por Camião para facilitar a leitura no ecrã
+                    df_vendas = pd.DataFrame(vendas_data).sort_values(by="Camião")
+                    st.dataframe(df_vendas, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhuma venda registada pelo modelo.")
 
             elif model.Status == GRB.INFEASIBLE:
                 st.error("❌ O Modelo é INVIÁVEL. As restrições de espaço ou orçamento estão demasiado apertadas.")
