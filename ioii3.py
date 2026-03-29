@@ -3,7 +3,9 @@ import pandas as pd
 import gurobipy as gp
 from gurobipy import GRB
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import math
+import os
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Dashboard IOII - Burrito Game (MINLP)", layout="wide")
@@ -209,11 +211,33 @@ if uploaded_file is not None:
                 st.subheader("🗺️ Mapa Logístico da Operação")
                 fig, ax = plt.subplots(figsize=(10, 6))
                 
+                # --- INÍCIO DA INJEÇÃO DA IMAGEM DE FUNDO ---
+                img_path = 'mapa.png'
+                if os.path.exists(img_path):
+                    try:
+                        img = mpimg.imread(img_path)
+                        # Descobrir as margens do mapa baseando-se nas localizações dos nós
+                        all_x = pd.concat([df_demand['x'], df_truck['x']])
+                        all_y = pd.concat([df_demand['y'], df_truck['y']])
+                        
+                        # Adicionamos uma margem de 5% para que os pontos não fiquem colados aos bordos
+                        margin_x = (all_x.max() - all_x.min()) * 0.05
+                        margin_y = (all_y.max() - all_y.min()) * 0.05
+                        
+                        extent = [all_x.min() - margin_x, all_x.max() + margin_x, 
+                                  all_y.min() - margin_y, all_y.max() + margin_y]
+                        
+                        # Desenhar a imagem. O zorder=0 garante que a imagem fica por trás dos pontos
+                        ax.imshow(img, extent=extent, alpha=0.7, zorder=0)
+                    except Exception as e:
+                        st.warning(f"⚠️ Erro ao carregar a imagem de fundo: {e}")
+                # --- FIM DA INJEÇÃO DA IMAGEM DE FUNDO ---
+
                 if use_quadrantes:
                     ax.axhline(y_medio, color='red', linestyle='--', alpha=0.3, label='Divisão Norte/Sul')
                     ax.axvline(x_medio, color='green', linestyle='--', alpha=0.3, label='Divisão Este/Oeste')
 
-                ax.scatter(df_demand['x'], df_demand['y'], c='gray', s=30, label='Edifícios', alpha=0.5, zorder=2)
+                ax.scatter(df_demand['x'], df_demand['y'], c='gray', s=30, label='Edifícios', alpha=0.8, zorder=2)
 
                 for i, tipo in opened_trucks:
                     t_row = df_truck[df_truck['index'] == i].iloc[0]
@@ -229,12 +253,13 @@ if uploaded_file is not None:
                         if (i, j) in a and X[i, j].X > 0.5:
                             d_row = df_demand[df_demand['index'] == j].iloc[0]
                             t_row = df_truck[df_truck['index'] == i].iloc[0]
-                            ax.plot([d_row['x'], t_row['x']], [d_row['y'], t_row['y']], 'k-', alpha=0.2, zorder=1)
+                            ax.plot([d_row['x'], t_row['x']], [d_row['y'], t_row['y']], 'k-', alpha=0.4, zorder=1)
 
                 handles, labels = plt.gca().get_legend_handles_labels()
                 by_label = dict(zip(labels, handles))
                 ax.legend(by_label.values(), by_label.keys(), loc='upper right')
-                ax.grid(True, linestyle=':', alpha=0.4)
+                # Removida a grid base (as linhas tracejadas do matplotlib) para não estragar a imagem de fundo
+                ax.grid(False) 
                 st.pyplot(fig)
                 st.markdown("---")
 
@@ -280,7 +305,6 @@ if uploaded_file is not None:
                             })
                 
                 if vendas_data:
-                    # Ordenar por Camião para facilitar a leitura no ecrã
                     df_vendas = pd.DataFrame(vendas_data).sort_values(by="Camião")
                     st.dataframe(df_vendas, use_container_width=True, hide_index=True)
                 else:
