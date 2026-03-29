@@ -3,9 +3,7 @@ import pandas as pd
 import gurobipy as gp
 from gurobipy import GRB
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 import math
-import os
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Dashboard IOII - Burrito Game (MINLP)", layout="wide")
@@ -91,6 +89,7 @@ if uploaded_file is not None:
         with st.spinner("A autenticar licença WLS e a calcular a rede Não-Linear..."):
             a = {(row['truck_node_index'], row['demand_node_index']): row['scaled_demand'] for _, row in df_dt.iterrows()}
 
+            # Injeção da Licença Cloud
             env = gp.Env(empty=True)
             env.setParam("OutputFlag", 0)
             
@@ -105,33 +104,41 @@ if uploaded_file is not None:
             env.start()
             model = gp.Model("Burrito_Game_MINLP", env=env)
             
+            # COMANDO CHAVE PARA HABILITAR MULTIPLICAÇÃO NÃO-LINEAR
             model.setParam('NonConvex', 2)
 
+            # Variáveis de Decisão
             Y = model.addVars(I, TIPOS, vtype=GRB.BINARY, name="Y")
             X = model.addVars(I, J, vtype=GRB.BINARY, name="X")
             P = model.addVars(J, vtype=GRB.INTEGER, lb=0, ub=max_campanhas, name="Marketing")
             Z = model.addVars(I, J, vtype=GRB.CONTINUOUS, name="Z_Procura")
 
+            # Função Objetivo
             lucro_var = gp.quicksum((r - k_ing) * Z[i, j] for i in I for j in J if (i, j) in a)
             custo_fixo_total = gp.quicksum(CUSTO_FIXO[t] * Y[i, t] for i in I for t in TIPOS)
             custo_mkt_total = gp.quicksum(custo_campanha * P[j] for j in J)
             model.setObjective(lucro_var - custo_fixo_total - custo_mkt_total, GRB.MAXIMIZE)
 
+            # Restrições Base
             for j in J:
                 model.addConstr(gp.quicksum(X[i, j] for i in I if (i, j) in a) <= 1)
             for i in I:
                 model.addConstr(gp.quicksum(Y[i, t] for t in TIPOS) <= 1)
 
+            # RESTRIÇÃO NÃO-LINEAR NATIVA
+            # Z_ij = Procura * X_ij * (1 + aumento_pct * P_j)
             for i in I:
                 for j in J:
                     if (i, j) in a:
                         d_base = a[i, j]
                         model.addConstr(Z[i, j] == d_base * X[i, j] + (d_base * aumento_pct) * X[i, j] * P[j])
 
+            # Orçamento e Capacidade
             model.addConstr(gp.quicksum(custo_campanha * P[j] for j in J) <= orcamento_mkt)
             for i in I:
                 model.addConstr(gp.quicksum(Z[i, j] for j in J if (i, j) in a) <= gp.quicksum(CAPACIDADE[t] * Y[i, t] for t in TIPOS))
 
+            # Restrições Estratégicas
             if use_min_trucks and min_trucks > 0:
                 model.addConstr(gp.quicksum(Y[i, t] for i in I for t in TIPOS) >= min_trucks)
 
@@ -164,6 +171,7 @@ if uploaded_file is not None:
                 soma_j2 = gp.quicksum(X[i, cliente_rival_2] for i in I if (i, cliente_rival_2) in a)
                 model.addConstr(soma_j1 + soma_j2 <= 1)
 
+            # Executar Solucionador
             model.optimize()
 
             if model.Status == GRB.OPTIMAL:
@@ -199,31 +207,13 @@ if uploaded_file is not None:
                     st.markdown("---")
 
                 st.subheader("🗺️ Mapa Logístico da Operação")
-                
-                # Gráfico com o tamanho exato de antes
                 fig, ax = plt.subplots(figsize=(10, 6))
                 
-                img_path = 'mapa.png'
-                if os.path.exists(img_path):
-                    try:
-                        img = mpimg.imread(img_path)
-                        all_x = pd.concat([df_demand['x'], df_truck['x']])
-                        all_y = pd.concat([df_demand['y'], df_truck['y']])
-                        
-                        # Retirada a margem artificial para forçar alinhamento.
-                        # As extremidades da imagem colam nas extremidades exatas dos dados.
-                        extent = [all_x.min(), all_x.max(), all_y.min(), all_y.max()]
-                        
-                        # aspect='auto' impede que o mapa fique gigante
-                        ax.imshow(img, extent=extent, aspect='auto', alpha=0.6, zorder=0)
-                    except Exception as e:
-                        st.warning(f"⚠️ Erro ao carregar a imagem de fundo: {e}")
-
                 if use_quadrantes:
                     ax.axhline(y_medio, color='red', linestyle='--', alpha=0.3, label='Divisão Norte/Sul')
                     ax.axvline(x_medio, color='green', linestyle='--', alpha=0.3, label='Divisão Este/Oeste')
 
-                ax.scatter(df_demand['x'], df_demand['y'], c='gray', s=30, label='Edifícios', alpha=0.8, zorder=2)
+                ax.scatter(df_demand['x'], df_demand['y'], c='gray', s=30, label='Edifícios', alpha=0.5, zorder=2)
 
                 for i, tipo in opened_trucks:
                     t_row = df_truck[df_truck['index'] == i].iloc[0]
@@ -239,12 +229,12 @@ if uploaded_file is not None:
                         if (i, j) in a and X[i, j].X > 0.5:
                             d_row = df_demand[df_demand['index'] == j].iloc[0]
                             t_row = df_truck[df_truck['index'] == i].iloc[0]
-                            ax.plot([d_row['x'], t_row['x']], [d_row['y'], t_row['y']], 'k-', alpha=0.4, zorder=1)
+                            ax.plot([d_row['x'], t_row['x']], [d_row['y'], t_row['y']], 'k-', alpha=0.2, zorder=1)
 
                 handles, labels = plt.gca().get_legend_handles_labels()
                 by_label = dict(zip(labels, handles))
                 ax.legend(by_label.values(), by_label.keys(), loc='upper right')
-                ax.grid(False) 
+                ax.grid(True, linestyle=':', alpha=0.4)
                 st.pyplot(fig)
                 st.markdown("---")
 
@@ -276,6 +266,7 @@ if uploaded_file is not None:
                     else:
                         st.info("Nenhuma campanha de marketing ativada.")
 
+                # --- NOVA SECÇÃO DE DETALHE DE VENDAS ---
                 st.markdown("---")
                 st.subheader("📦 Detalhe de Vendas (Alocação Camião -> Edifício)")
                 vendas_data = []
@@ -289,6 +280,7 @@ if uploaded_file is not None:
                             })
                 
                 if vendas_data:
+                    # Ordenar por Camião para facilitar a leitura no ecrã
                     df_vendas = pd.DataFrame(vendas_data).sort_values(by="Camião")
                     st.dataframe(df_vendas, use_container_width=True, hide_index=True)
                 else:
