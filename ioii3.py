@@ -19,6 +19,10 @@ def t(pt_text, en_text):
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Dashboard IOII - Burrito Game (MINLP)", layout="wide")
 
+# O botão de idioma passa para o topo absoluto da barra lateral, fora de qualquer condição!
+st.sidebar.radio("🌐 Idioma / Language", ['PT', 'EN'], horizontal=True, key='lang')
+st.sidebar.markdown("---")
+
 st.title(t("🌮 Burrito Game 3.0 - Otimização de Frota (MINLP)", "🌮 Burrito Game 3.0 - Fleet Optimization (MINLP)"))
 st.markdown(t("Simulador de Programação Não-Linear com Gurobi WLS e Fila de Espera Automática.", 
               "Non-Linear Programming Simulator with Gurobi WLS and Automatic Queue."))
@@ -44,11 +48,7 @@ if uploaded_file is not None:
     I = df_truck['index'].tolist()
     J = df_demand['index'].tolist()
 
-    # --- 3. BARRA LATERAL ---
-    # Botão de Idioma
-    st.sidebar.radio("🌐 Idioma / Language", ['PT', 'EN'], horizontal=True, key='lang')
-    st.sidebar.markdown("---")
-
+    # --- 3. BARRA LATERAL (Restante) ---
     st.sidebar.header(t("🎯 Estratégia de Marketing", "🎯 Marketing Strategy"))
     aumento_pct = st.sidebar.slider(t("Aumento Procura / Campanha (%)", "Demand Increase / Campaign (%)"), min_value=1, max_value=50, value=10) / 100.0
     max_campanhas = st.sidebar.slider(t("Máx. Campanhas por Edifício", "Max Campaigns per Building"), min_value=0, max_value=5, value=3)
@@ -99,8 +99,6 @@ if uploaded_file is not None:
     else:
         cliente_rival_1, cliente_rival_2 = None, None
 
-    # Tradução dos Tipos para a lógica do Gurobi ficar em Inglês no background se necessário, 
-    # mas mantemos a chave em PT para não partir a lógica dos dicionários. Apenas exibimos traduzido.
     TIPOS = ['Pequeno', 'Médio', 'Grande']
     CAPACIDADE = {'Pequeno': cap_P, 'Médio': cap_M, 'Grande': cap_G}
     CUSTO_FIXO = {'Pequeno': cost_P, 'Médio': cost_M, 'Grande': cost_G}
