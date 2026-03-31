@@ -302,8 +302,11 @@ if uploaded_file is not None:
                         else:
                             st.info("Nenhuma venda registada pelo modelo.")
 
-                    elif model.Status == GRB.INFEASIBLE:
-                        st.error("❌ O Modelo é INVIÁVEL. As restrições de espaço ou orçamento estão demasiado apertadas.")
+                    elif model.Status in [GRB.INFEASIBLE, GRB.INF_OR_UNBD]:
+                        st.error("❌ O Modelo é INVIÁVEL. Não existe nenhuma solução matemática possível com estas regras.")
+                        st.info("💡 **Dica:** O problema está demasiado estrangulado. Tente diminuir o 'Raio Mínimo entre Camiões', baixar o 'Nº Mínimo de Camiões' ou desligar alguma restrição de monopólio.")
+                    else:
+                        st.warning(f"⚠️ O otimizador parou sem encontrar a solução perfeita (Código de Status Gurobi: {model.Status}).")
                         
                     # Liberta a licença da nuvem instantaneamente
                     model.dispose()
