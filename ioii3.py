@@ -61,9 +61,13 @@ if uploaded_file is not None:
     st.sidebar.markdown("---")
     st.sidebar.header("🛡️ Restrições Avançadas")
     
+    # NOVAS RESTRIÇÕES COEXISTENTES (Monopólio + Distância Mínima Geral)
     use_monopolio = st.sidebar.checkbox("Monopólio Zonal (Camiões Grandes)", value=True)
-    raio_monopolio = st.sidebar.number_input("Raio de Exclusividade (m)", min_value=10.0, value=150.0, step=10.0) if use_monopolio else 0.0
+    raio_monopolio = st.sidebar.number_input("Raio de Exclusividade do Grande (m)", min_value=10.0, value=150.0, step=10.0) if use_monopolio else 0.0
     
+    use_dist_minima = st.sidebar.checkbox("Distância Mínima de Segurança (Todos)", value=True)
+    raio_dist_minima = st.sidebar.number_input("Raio Mínimo entre Camiões (m)", min_value=10.0, value=50.0, step=10.0) if use_dist_minima else 0.0
+
     use_quadrantes = st.sidebar.checkbox("Cobertura Geográfica (1 por Quadrante)", value=True)
     
     use_min_trucks = st.sidebar.checkbox("Impor nº mínimo total de camiões?", value=use_quadrantes)
@@ -94,7 +98,7 @@ if uploaded_file is not None:
             sucesso_gurobi = False
             a = {(row['truck_node_index'], row['demand_node_index']): row['scaled_demand'] for _, row in df_dt.iterrows()}
             
-            # Tenta resolver até 5 vezes (se falhar por limite de sessões, espera 3 segs e tenta de novo)
+            # Tenta resolver até 5 vezes
             for tentativa in range(5):
                 try:
                     env = gp.Env(empty=True)
@@ -138,15 +142,23 @@ if uploaded_file is not None:
                     if use_min_trucks and min_trucks > 0:
                         model.addConstr(gp.quicksum(Y[i, t] for i in I for t in TIPOS) >= min_trucks)
 
-                    if use_monopolio:
+                    # A MAGIA: COEXISTÊNCIA DAS RESTRIÇÕES ESPACIAIS
+                    if use_monopolio or use_dist_minima:
                         for i1 in I:
                             for i2 in I:
-                                if i1 != i2:
+                                if i1 < i2: # Usa i1 < i2 para não calcular e aplicar restrições duplicadas
                                     row1 = df_truck[df_truck['index'] == i1].iloc[0]
                                     row2 = df_truck[df_truck['index'] == i2].iloc[0]
                                     dist = math.sqrt((row1['x'] - row2['x'])**2 + (row1['y'] - row2['y'])**2)
-                                    if dist <= raio_monopolio:
+                                    
+                                    # Regra 1: Distância Mínima de Segurança (NENHUM camião pode estar perto um do outro)
+                                    if use_dist_minima and dist <= raio_dist_minima:
+                                        model.addConstr(gp.quicksum(Y[i1, t] for t in TIPOS) + gp.quicksum(Y[i2, t] for t in TIPOS) <= 1)
+                                    
+                                    # Regra 2: Monopólio (Se abrir um Grande em i1, afasta TUDO em i2 e vice-versa)
+                                    if use_monopolio and dist <= raio_monopolio:
                                         model.addConstr(Y[i1, 'Grande'] + gp.quicksum(Y[i2, t] for t in TIPOS) <= 1)
+                                        model.addConstr(Y[i2, 'Grande'] + gp.quicksum(Y[i1, t] for t in TIPOS) <= 1)
 
                     if use_quadrantes:
                         x_medio = df_truck['x'].mean()
